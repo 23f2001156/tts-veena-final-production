@@ -26,7 +26,7 @@ SAMPLE_RATE = 24000
 NUM_CHANNELS = 1
 BYTES_PER_SAMPLE = 2  # 16-bit
 CHUNK_DURATION_MS = 100
-MAX_CONCURRENT_REQUESTS = 5
+MAX_CONCURRENT_REQUESTS = 5  
 DEFAULT_SPEAKER = "kavya"
 DEFAULT_TEMPERATURE = 0.4
 DEFAULT_TOP_P = 0.9
@@ -65,10 +65,9 @@ tokenizer = None
 snac_model = None
 inference_semaphore = None
 
-# Cross-process GPU lock (shared with STT process)
-from gpu_lock import CrossProcessGPUSemaphore
-
-gpu_lock_manager = None
+# No GPU lock needed - TTS runs alone on dedicated G4DN machine
+# from gpu_lock import CrossProcessGPUSemaphore
+# gpu_lock_manager = None
 
 
 # MODELS
@@ -261,7 +260,7 @@ async def stream_audio_chunks(
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     
-    global inference_semaphore, gpu_lock_manager
+    global inference_semaphore
     
     # Startup
     load_models()
@@ -269,27 +268,14 @@ async def lifespan(app: FastAPI):
     # HTTP request semaphore (controls queue depth)
     inference_semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
     
-    # Cross-process GPU semaphore (coordinates with STT)
-    gpu_lock_manager = CrossProcessGPUSemaphore(
-        max_slots=3,  # TTS can use max 3 of 5 total GPU slots
-        lock_name="gpu_inference_lock",
-        timeout=30.0
-    )
-    logger.info("Cross-process GPU coordination initialized (max 3 slots)")
+    logger.info("TTS running on dedicated GPU (G4DN.XLARGE T4 16GB)")
     
     # Warmup model with test synthesis
     logger.info("Warming up model with test synthesis...")
     try:
-        # Acquire GPU lock for warmup
-        if gpu_lock_manager.acquire():
-            try:
-                warmup_tokens = generate_audio_tokens("Test", "kavya", 0.4, 0.9)
-                warmup_audio = decode_snac_tokens(warmup_tokens)
-                logger.info(f"✅ Warmup complete! Generated {len(warmup_audio)} bytes")
-            finally:
-                gpu_lock_manager.release()
-        else:
-            logger.warning("⚠️  Could not acquire GPU lock for warmup")
+        warmup_tokens = generate_audio_tokens("Test", "kavya", 0.4, 0.9)
+        warmup_audio = decode_snac_tokens(warmup_tokens)
+        logger.info(f"✅ Warmup complete! Generated {len(warmup_audio)} bytes")
     except Exception as e:
         logger.warning(f"⚠️  Warmup failed: {e}")
     
@@ -325,24 +311,13 @@ async def synthesize(request: TTSRequest) -> StreamingResponse:
     start_time = time.time()
     
     try:
-        # Acquire HTTP semaphore for queue control
         async with inference_semaphore:
-            # Acquire cross-process GPU lock
-            if not gpu_lock_manager.acquire():
-                raise HTTPException(
-                    status_code=503, 
-                    detail="GPU busy - could not acquire lock"
-                )
-            
-            try:
-                pcm_data = await synthesize_speech(
-                    text=request.text,
-                    speaker=request.speaker,
-                    temperature=request.temperature,
-                    top_p=request.top_p,
-                )
-            finally:
-                gpu_lock_manager.release()
+            pcm_data = await synthesize_speech(
+                text=request.text,
+                speaker=request.speaker,
+                temperature=request.temperature,
+                top_p=request.top_p,
+            )
         
         inference_time = time.time() - start_time
         audio_duration = len(pcm_data) / (SAMPLE_RATE * BYTES_PER_SAMPLE)
