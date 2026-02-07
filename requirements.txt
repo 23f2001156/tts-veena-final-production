@@ -1,0 +1,19 @@
+
+# TTS Server 
+fastapi>=0.109.0
+uvicorn>=0.27.0
+pydantic>=2.5.0
+
+# Veena TTS Model
+torch>=2.0.0
+transformers>=4.40.0
+snac>=1.0.0
+bitsandbytes>=0.43.0
+
+# LiveKit Agent
+livekit-agents>=0.12.0
+livekit-plugins-silero>=0.7.0
+livekit-plugins-noise-cancellation>=0.2.0
+livekit-plugins-turn-detector>=0.3.0
+python-dotenv>=1.0.0
+httpx>=0.27.0
