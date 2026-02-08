@@ -8,7 +8,7 @@ import struct
 import time
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
-
+import numpy as np 
 import torch
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
@@ -105,8 +105,9 @@ def load_models():
     quantization_config = BitsAndBytesConfig(
         load_in_4bit=True,
         bnb_4bit_quant_type="nf4",
-        bnb_4bit_compute_dtype=torch.bfloat16,
+        bnb_4bit_compute_dtype=torch.float16,
         bnb_4bit_use_double_quant=True,
+        attn_implementation="sdpa",
     )
    
     model = AutoModelForCausalLM.from_pretrained(
@@ -158,7 +159,7 @@ def generate_audio_tokens(text: str, speaker: str, temperature: float, top_p: fl
     max_tokens = min(int(len(text) * 1.3) * 7 + 21, 700)
     
     # Generate audio tokens
-    with torch.no_grad():
+    with torch.no_grad(), torch.cuda.amp.autocast()::
         output = model.generate(
             input_ids,
             max_new_tokens=max_tokens,
@@ -219,8 +220,8 @@ def decode_snac_tokens(snac_tokens: list[int]) -> bytes:
     
     
     audio_np = audio_hat.squeeze().clamp(-1, 1).cpu().numpy()
-    pcm_samples = [int(max(-32768, min(32767, s * 32767))) for s in audio_np]
-    pcm_data = struct.pack(f"<{len(pcm_samples)}h", *pcm_samples)
+    pcm_int16 = (audio_np * 32767).clip(-32768, 32767).astype(np.int16)
+    pcm_data = pcm_int16.tobytes()
     
     return pcm_data
 
