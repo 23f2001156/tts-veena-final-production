@@ -107,7 +107,7 @@ def load_models():
         bnb_4bit_quant_type="nf4",
         bnb_4bit_compute_dtype=torch.float16,
         bnb_4bit_use_double_quant=True,
-        attn_implementation="sdpa",
+       
     )
    
     model = AutoModelForCausalLM.from_pretrained(
@@ -115,6 +115,7 @@ def load_models():
         quantization_config=quantization_config,
         device_map="auto",
         trust_remote_code=True,
+        attn_implementation="sdpa",
     )
     
     tokenizer = AutoTokenizer.from_pretrained(
@@ -159,7 +160,7 @@ def generate_audio_tokens(text: str, speaker: str, temperature: float, top_p: fl
     max_tokens = min(int(len(text) * 1.3) * 7 + 21, 700)
     
     # Generate audio tokens
-    with torch.no_grad(), torch.cuda.amp.autocast()::
+    with torch.no_grad(), torch.cuda.amp.autocast():
         output = model.generate(
             input_ids,
             max_new_tokens=max_tokens,
