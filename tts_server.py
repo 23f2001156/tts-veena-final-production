@@ -226,19 +226,13 @@ def decode_snac_tokens(snac_tokens: list[int]) -> bytes:
 
 
 async def synthesize_speech(text: str, speaker: str, temperature: float, top_p: float) -> bytes:
-    """Full TTS pipeline: text -> tokens -> audio -> PCM bytes."""
-    loop = asyncio.get_event_loop()
     
-    
-    snac_tokens = await loop.run_in_executor(
-        None, generate_audio_tokens, text, speaker, temperature, top_p
-    )
+    snac_tokens = generate_audio_tokens(text, speaker, temperature, top_p)
     
     if not snac_tokens:
         raise ValueError("No audio tokens generated")
     
-    # Decode tokens to PCM
-    pcm_data = await loop.run_in_executor(None, decode_snac_tokens, snac_tokens)
+    pcm_data = decode_snac_tokens(snac_tokens)
     
     return pcm_data
 
